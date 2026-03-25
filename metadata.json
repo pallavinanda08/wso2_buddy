@@ -1,0 +1,5 @@
+{
+  "name": "WSO2 Buddy",
+  "description": "Expert implementation assistant for WSO2 middleware products (APIM, MI, IS).",
+  "requestFramePermissions": []
+}
