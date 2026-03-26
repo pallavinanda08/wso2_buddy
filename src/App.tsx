@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Terminal, Info, AlertTriangle, BookOpen, Layers, ShieldCheck, RefreshCcw, ChevronDown, Home } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { Send, Bot, User, Terminal, Info, AlertTriangle, BookOpen, Layers, ShieldCheck, RefreshCcw, ChevronDown, Home, Search, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { clsx, type ClassValue } from 'clsx';
@@ -12,9 +12,9 @@ function cn(...inputs: ClassValue[]) {
 }
 
 const PRODUCT_VERSIONS: Record<WSO2Product, string[]> = {
-  APIM: ['4.6.0', '4.5.0', '4.4.0', '4.3.0', '4.2.0', '4.1.0', '4.0.0'],
-  MI: ['4.5.0', '4.4.0', '4.3.0', '4.2.0', '4.1.0'],
-  IS: ['7.1.0', '7.0.0', '6.1.0', '6.0.0'],
+  APIM: ['4.6.0 (Latest)', '4.5.0', '4.4.0', '4.3.0', '4.2.0', '4.1.0', '4.0.0'],
+  MI: ['4.5.0 (Latest)', '4.4.0', '4.3.0', '4.2.0', '4.1.0'],
+  IS: ['7.1.0 (Latest)', '7.0.0', '6.1.0', '6.0.0'],
   UNKNOWN: ['Latest']
 };
 
@@ -23,7 +23,7 @@ export default function App() {
     {
       id: '1',
       role: 'assistant',
-      content: "Hello! I am WSO2 Buddy, your expert documentation guide. Please select your product and version above to get started, or ask me anything about WSO2 middleware.",
+      content: "Hello! I am **WSO2 Buddy**, your expert documentation guide.\n\nPlease **select your WSO2 product and version** from the dropdown menu in the header above to get started.",
       timestamp: Date.now(),
     },
   ]);
@@ -31,6 +31,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<WSO2Product>('UNKNOWN');
   const [selectedVersion, setSelectedVersion] = useState<string>('Latest');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,15 +68,29 @@ export default function App() {
     try {
       const stream = getGeminiResponseStream([...messages, userMessage], selectedProduct, selectedVersion);
       let fullContent = '';
+      let lastUpdate = Date.now();
       
       for await (const chunk of stream) {
         fullContent += chunk;
-        setMessages((prev) => 
-          prev.map((msg) => 
-            msg.id === assistantMessageId ? { ...msg, content: fullContent } : msg
-          )
-        );
+        
+        // Throttle state updates to every 50ms to reduce re-renders during fast streaming
+        const now = Date.now();
+        if (now - lastUpdate > 50) {
+          setMessages((prev) => 
+            prev.map((msg) => 
+              msg.id === assistantMessageId ? { ...msg, content: fullContent } : msg
+            )
+          );
+          lastUpdate = now;
+        }
       }
+      
+      // Final update to ensure everything is captured
+      setMessages((prev) => 
+        prev.map((msg) => 
+          msg.id === assistantMessageId ? { ...msg, content: fullContent } : msg
+        )
+      );
     } catch (error) {
       console.error('Error getting response:', error);
       setMessages((prev) => 
@@ -94,12 +110,14 @@ export default function App() {
       {
         id: '1',
         role: 'assistant',
-        content: "Hello! I am WSO2 Buddy, your expert documentation guide. Please select your product and version above to get started, or ask me anything about WSO2 middleware.",
+        content: "Hello! I am **WSO2 Buddy**, your expert documentation guide.\n\nPlease **select your WSO2 product and version** from the dropdown menu in the header above to get started.",
         timestamp: Date.now(),
       },
     ]);
     setSelectedProduct('UNKNOWN');
     setSelectedVersion('Latest');
+    setSearchQuery('');
+    setIsSearchOpen(false);
   };
 
   const handleProductChange = (product: WSO2Product) => {
@@ -118,48 +136,84 @@ export default function App() {
     setInput(q);
   };
 
+  const filteredMessages = useMemo(() => {
+    if (!searchQuery.trim()) return messages;
+    const query = searchQuery.toLowerCase();
+    return messages.filter(m => m.content.toLowerCase().includes(query));
+  }, [messages, searchQuery]);
+
   return (
-    <div className="flex flex-col h-screen max-w-5xl mx-auto bg-white shadow-2xl overflow-hidden border-x border-gray-200">
+    <div className="flex flex-col h-screen max-w-5xl mx-auto bg-white shadow-2xl overflow-hidden sm:border-x border-gray-200">
       {/* Header - Narrower */}
-      <header className="bg-wso2-dark text-white py-2 px-6 flex items-center justify-between border-b-2 border-wso2-orange">
+      <header className="bg-wso2-dark text-white py-2 px-2 sm:px-6 flex items-center justify-between border-b-2 border-wso2-orange relative overflow-hidden h-12 sm:h-14">
+        <AnimatePresence>
+          {isSearchOpen ? (
+            <motion.div 
+              initial={{ y: -50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -50, opacity: 0 }}
+              className="absolute inset-0 bg-wso2-dark z-20 flex items-center px-2 sm:px-4 gap-2 sm:gap-3"
+            >
+              <Search size={16} className="text-wso2-orange sm:w-[18px] sm:h-[18px]" />
+              <input 
+                autoFocus
+                type="text"
+                placeholder="Search chat history..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 bg-transparent border-none outline-none text-xs sm:text-sm font-medium placeholder:text-gray-500"
+              />
+              <button 
+                onClick={() => {
+                  setIsSearchOpen(false);
+                  setSearchQuery('');
+                }}
+                className="p-1 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <X size={16} className="text-gray-400 hover:text-white sm:w-[18px] sm:h-[18px]" />
+              </button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
         <button 
           onClick={resetChat}
-          className="flex items-center gap-2 hover:opacity-80 transition-opacity text-left focus:outline-none group"
+          className="flex items-center gap-1.5 sm:gap-2 hover:opacity-80 transition-opacity text-left focus:outline-none group flex-shrink-0"
           title="Go to Home / Reset Chat"
         >
-          <div className="bg-wso2-orange p-1.5 rounded-md group-hover:scale-105 transition-transform">
-            <Bot size={20} className="text-white" />
+          <div className="bg-wso2-orange p-1 sm:p-1.5 rounded-md group-hover:scale-105 transition-transform">
+            <Bot size={14} className="text-white sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
-              WSO2 Buddy <span className="text-[8px] bg-wso2-orange px-1 py-0.5 rounded uppercase font-black">v1.0</span>
+          <div className="hidden xs:block">
+            <h1 className="text-xs sm:text-lg font-bold tracking-tight flex items-center gap-1 sm:gap-2">
+              WSO2 Buddy <span className="text-[6px] sm:text-[8px] bg-wso2-orange px-1 py-0.5 rounded uppercase font-black">v1.0</span>
             </h1>
-            <p className="text-[10px] text-gray-400 font-medium leading-none">Expert Documentation Guide</p>
+            <p className="text-[8px] sm:text-[10px] text-gray-400 font-medium leading-none">Expert Documentation Guide</p>
           </div>
         </button>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-white/5 p-1 rounded-lg border border-white/10">
+        <div className="flex items-center gap-1 sm:gap-3">
+          <div className="flex items-center gap-0.5 sm:gap-2 bg-white/5 p-0.5 sm:p-1 rounded-lg border border-white/10">
             <button 
               onClick={resetChat}
               className="p-1 hover:bg-white/10 rounded transition-colors text-gray-400 hover:text-white"
               title="Home / Reset"
             >
-              <Home size={14} />
+              <Home size={10} className="sm:w-[14px] sm:h-[14px]" />
             </button>
             <div className="w-px h-3 bg-white/10"></div>
             <div className="relative">
               <select 
                 value={selectedProduct}
                 onChange={(e) => handleProductChange(e.target.value as WSO2Product)}
-                className="appearance-none bg-transparent text-[10px] font-bold text-gray-300 hover:text-white pl-2 pr-6 py-1 cursor-pointer focus:outline-none uppercase tracking-wider"
+                className="appearance-none bg-transparent text-[8px] sm:text-[10px] font-bold text-gray-300 hover:text-white pl-1 sm:pl-2 pr-4 sm:pr-6 py-1 cursor-pointer focus:outline-none uppercase tracking-wider"
               >
                 <option value="UNKNOWN" className="bg-wso2-dark">Product</option>
                 <option value="APIM" className="bg-wso2-dark">APIM</option>
                 <option value="MI" className="bg-wso2-dark">MI</option>
                 <option value="IS" className="bg-wso2-dark">IS</option>
               </select>
-              <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              <ChevronDown size={6} className="absolute right-0.5 sm:right-1.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none sm:w-[10px] sm:h-[10px]" />
             </div>
             
             <div className="w-px h-3 bg-white/10"></div>
@@ -169,24 +223,32 @@ export default function App() {
                 value={selectedVersion}
                 onChange={(e) => setSelectedVersion(e.target.value)}
                 disabled={selectedProduct === 'UNKNOWN'}
-                className="appearance-none bg-transparent text-[10px] font-bold text-gray-300 hover:text-white pl-2 pr-6 py-1 cursor-pointer focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed"
+                className="appearance-none bg-transparent text-[8px] sm:text-[10px] font-bold text-gray-300 hover:text-white pl-1 sm:pl-2 pr-4 sm:pr-6 py-1 cursor-pointer focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 {PRODUCT_VERSIONS[selectedProduct].map(v => (
                   <option key={v} value={v} className="bg-wso2-dark">{v}</option>
                 ))}
               </select>
-              <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              <ChevronDown size={6} className="absolute right-0.5 sm:right-1.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none sm:w-[10px] sm:h-[10px]" />
             </div>
           </div>
 
-          <div className="w-px h-6 bg-white/10 hidden sm:block"></div>
+          <div className="w-px h-6 bg-white/10 hidden md:block"></div>
+
+          <button 
+            onClick={() => setIsSearchOpen(true)}
+            className="p-1 sm:p-1.5 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+            title="Search Chat"
+          >
+            <Search size={12} className="sm:w-4 sm:h-4" />
+          </button>
 
           <button 
             onClick={resetChat}
-            className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+            className="p-1 sm:p-1.5 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white hidden sm:block"
             title="Reset Conversation"
           >
-            <RefreshCcw size={16} />
+            <RefreshCcw size={12} className="sm:w-4 sm:h-4" />
           </button>
         </div>
       </header>
@@ -194,10 +256,22 @@ export default function App() {
       {/* Chat Area - Larger */}
       <div 
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scroll-smooth bg-[#fafafa]"
+        className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-6 scroll-smooth bg-[#fafafa]"
       >
+        {searchQuery && filteredMessages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
+            <Search size={48} className="opacity-20" />
+            <p className="text-sm font-medium">No messages found matching "{searchQuery}"</p>
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="text-wso2-orange text-xs font-bold hover:underline"
+            >
+              Clear search
+            </button>
+          </div>
+        )}
         <AnimatePresence initial={false}>
-          {messages.map((message) => (
+          {filteredMessages.map((message) => (
             <motion.div
               key={message.id}
               initial={{ opacity: 0, y: 10 }}
@@ -231,13 +305,22 @@ export default function App() {
                       <Markdown
                         components={{
                           p: ({ children }) => {
-                            // Check if children is a string and contains "Source:"
-                            const content = children?.toString() || "";
-                            if (content.includes("Source:")) {
+                            // Check if children contains "Source:" or "[Verified for:"
+                            const childrenArray = Array.isArray(children) ? children : [children];
+                            const isSource = childrenArray.some(child => 
+                              typeof child === 'string' && (child.includes("Source:") || child.includes("[Verified for:"))
+                            );
+                            
+                            if (isSource) {
                               return <p className="source-footer">{children}</p>;
                             }
                             return <p>{children}</p>;
-                          }
+                          },
+                          a: ({ children, href }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-wso2-orange hover:underline font-medium">
+                              {children}
+                            </a>
+                          )
                         }}
                       >
                         {message.content}
@@ -298,7 +381,7 @@ export default function App() {
       </div>
 
       {/* Input Area - Narrower */}
-      <div className="p-4 bg-white border-t border-gray-100">
+      <div className="p-3 sm:p-4 bg-white border-t border-gray-100">
         <div className="relative flex items-center gap-2">
           <div className="flex-1 relative">
             <textarea
@@ -311,8 +394,8 @@ export default function App() {
                   handleSend();
                 }
               }}
-              placeholder="Ask about APIM, MI, or IS configuration..."
-              className="w-full pl-4 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-wso2-orange/50 focus:border-wso2-orange transition-all resize-none text-sm"
+              placeholder="Ask about APIM, MI, or IS..."
+              className="w-full pl-3 sm:pl-4 pr-10 py-2 sm:py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-wso2-orange/50 focus:border-wso2-orange transition-all resize-none text-sm"
             />
             <button
               onClick={handleSend}
@@ -324,17 +407,19 @@ export default function App() {
           </div>
         </div>
         
-        <div className="mt-2 flex flex-wrap gap-3 justify-center">
-          <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-            <Layers size={10} className="text-wso2-orange" />
+        <div className="mt-2 flex flex-wrap gap-2 sm:gap-4 justify-center items-center">
+          <div className="flex items-center gap-1 text-[8px] sm:text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+            <Layers size={8} className="text-wso2-orange sm:w-[10px] sm:h-[10px]" />
             APIM
           </div>
-          <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-            <Terminal size={10} className="text-wso2-orange" />
+          <div className="w-px h-2 bg-gray-200"></div>
+          <div className="flex items-center gap-1 text-[8px] sm:text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+            <Terminal size={8} className="text-wso2-orange sm:w-[10px] sm:h-[10px]" />
             MI
           </div>
-          <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-            <ShieldCheck size={10} className="text-wso2-orange" />
+          <div className="w-px h-2 bg-gray-200"></div>
+          <div className="flex items-center gap-1 text-[8px] sm:text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+            <ShieldCheck size={8} className="text-wso2-orange sm:w-[10px] sm:h-[10px]" />
             IS
           </div>
         </div>

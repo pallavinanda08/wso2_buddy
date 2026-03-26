@@ -8,6 +8,8 @@
   --color-wso2-orange: #f47b20;
   --color-wso2-dark: #1e1e1e;
   --color-wso2-gray: #f5f5f5;
+
+  --breakpoint-xs: 400px;
 }
 
 body {
