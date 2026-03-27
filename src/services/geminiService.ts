@@ -56,8 +56,18 @@ SOURCE FOOTER (mandatory on every response)
 'Source: [page_name_2] — WSO2 [product] [version] Documentation (if applicable)'
 'Verified for: WSO2 [product] [version]'`;
 
-export async function* getGeminiResponseStream(messages: Message[], product: WSO2Product, version: string) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export async function getGeminiResponse(query: string) {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  const data = await res.json();
+  return data.reply;
+}
   
   const versionContext = product !== 'UNKNOWN' 
     ? `\n\nCURRENT CONTEXT: The user has explicitly selected WSO2 ${product} version ${version} from the application dropdown. 
